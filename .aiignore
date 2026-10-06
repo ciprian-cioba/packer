@@ -47,3 +47,6 @@ Cargo.lock
 poetry.lock
 Gemfile.lock
 composer.lock
+packer.mjs
+packer.test.mjs
+.github/
