@@ -1,0 +1,163 @@
+name: AI Round-trip
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: ai-roundtrip-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # -------------------------------------------------------------------------
+  # PACK — on every PR push, pack the head branch and update one comment.
+  # -------------------------------------------------------------------------
+  pack:
+    if: |
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Run packer
+        env:
+          PACK_FORMAT: ${{ vars.PACK_FORMAT }}
+          PACK_IGNORE: ${{ vars.PACK_IGNORE }}
+        run: |
+          node .github/scripts/pack.mjs . > /tmp/packed.md
+          echo "size: $(wc -c < /tmp/packed.md) bytes"
+
+      - name: Post or update PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const MARKER = '<!-- ai-pack -->';
+            const LIMIT = 60000;
+            const raw = fs.readFileSync('/tmp/packed.md', 'utf8');
+
+            const intro =
+              MARKER + '\n' +
+              '### 📦 Packed codebase\n\n' +
+              '**Copy the block below into your AI, then paste the response as a new comment on this PR.**\n\n';
+
+            let body;
+            if (raw.length <= LIMIT) {
+              body = intro + raw;
+            } else {
+              const preview = raw.slice(0, LIMIT - 800);
+              body = intro +
+                `⚠️ Pack is ${raw.length} chars — too large for a comment. ` +
+                `Download the **ai-pack** artifact from the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).\n\n` +
+                '<details><summary>Preview (truncated)</summary>\n\n```\n' + preview + '\n```\n\n</details>';
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const existing = comments.find(
+              c => c.user.login === 'github-actions[bot]' && c.body.startsWith(MARKER)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body,
+              });
+            }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-pack
+          path: /tmp/packed.md
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  # APPLY — when you comment on a PR with fenced code blocks, extract and push.
+  # -------------------------------------------------------------------------
+  apply:
+    if: |
+      github.event_name == 'issue_comment'
+      && github.event.issue.pull_request
+      && github.event.comment.user.login == github.event.repository.owner.login
+      && !startsWith(github.event.comment.body, '<!-- ai-pack -->')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify PR is from this repository
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              ...context.repo, pull_number: context.issue.number,
+            });
+            const same = pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
+            core.setOutput('same', String(same));
+            core.setOutput('head_ref', pr.head.ref);
+            if (!same) {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number,
+                body: '⚠️ Forked PRs cannot be written to with the default `GITHUB_TOKEN`. Push the branch inside this repo to use this workflow.',
+              });
+              core.setFailed('Forked PR — cannot push back');
+            }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Apply files from comment body
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          REPO_ROOT: ${{ github.workspace }}
+        run: |
+          printf '%s' "$COMMENT_BODY" | node .github/scripts/apply.mjs
+
+      - name: Commit and push if anything changed
+        id: commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No changes"
+          else
+            git commit -m "Apply AI edits (comment ${{ github.event.comment.id }})"
+            git push origin HEAD
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reply on the comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const changed = '${{ steps.commit.outputs.changed }}' === 'true';
+            await github.rest.issues.createComment({
+              ...context.repo, issue_number: context.issue.number,
+              body: changed
+                ? '✅ Applied AI edits — the pack comment above has been refreshed.'
+                : '⚠️ No file changes detected in your comment.',
+            });
