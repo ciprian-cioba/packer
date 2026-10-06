@@ -49,6 +49,9 @@ bun.lockb
 Cargo.lock
 poetry.lock
 Gemfile.lock
+.github
+packer.mjs
+packer.test.mjs
 composer.lock`;
 
 async function readIgnoreRules() {
