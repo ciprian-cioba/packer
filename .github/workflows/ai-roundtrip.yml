@@ -37,7 +37,7 @@ jobs:
           PACK_FORMAT: ${{ vars.PACK_FORMAT }}
           PACK_IGNORE: ${{ vars.PACK_IGNORE }}
         run: |
-          node .github/scripts/packer.mjs . > /tmp/packed.md
+          node .github/scripts/pack.mjs . > /tmp/packed.md
           echo "size: $(wc -c < /tmp/packed.md) bytes"
 
       - name: Post or update PR comment
