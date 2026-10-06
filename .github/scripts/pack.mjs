@@ -52,6 +52,70 @@ Gemfile.lock
 .github
 packer.mjs
 packer.test.mjs
+# Files and directories the packer should skip.
+# Same glob syntax as .gitignore for our purposes: `*` and `?` wildcards.
+
+# ---- The packer tool itself ----------------------------------------------
+# These files exist to pack and unpack; including them wastes tokens and
+# causes the AI to imitate the tool's own examples.
+packer.mjs
+packer.test.mjs
+app.mjs
+tests.mjs
+index.html
+styles.css
+README.md
+.github/
+
+# ---- Build and dependency output -----------------------------------------
+.git
+node_modules
+.env
+.env.*
+dist
+build
+out
+.next
+.nuxt
+coverage
+.cache
+__pycache__
+.venv
+venv
+target
+vendor
+
+# ---- Binaries and archives -----------------------------------------------
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.ico
+*.pdf
+*.zip
+*.tar
+*.gz
+*.exe
+*.dll
+*.so
+*.dylib
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# ---- Lockfiles -----------------------------------------------------------
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+Cargo.lock
+poetry.lock
+Gemfile.lock
+composer.lock
+.aiignore
+
 composer.lock`;
 
 async function readIgnoreRules() {

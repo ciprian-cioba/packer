@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codebase Packer &amp; Unpacker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+<header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+    <div class="flex items-center space-x-3 min-w-0">
+      <div class="p-2 bg-brand-600/20 text-brand-500 rounded-lg border border-brand-500/30 shrink-0">
+        <i class="fa-solid fa-box-archive text-xl"></i>
+      </div>
+      <div class="min-w-0">
+        <h1 class="text-base sm:text-lg font-bold tracking-tight text-white flex items-center gap-2">
+          <span class="truncate">Codebase Packer &amp; Unpacker</span>
+          <span class="hidden sm:inline text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">Client-Side</span>
+        </h1>
+        <p class="text-[11px] text-slate-400 truncate">Lossless round-trip · write directly back to your folder</p>
+      </div>
+    </div>
+    <nav class="flex bg-slate-800/80 p-1 rounded-xl border border-slate-700/60 text-xs font-medium shrink-0">
+      <button id="tabBtnPacker" onclick="switchTab('packer')" class="px-3 sm:px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 bg-brand-600 text-white shadow-sm">
+        <i class="fa-solid fa-file-zipper"></i><span class="hidden sm:inline">Packer</span>
+      </button>
+      <button id="tabBtnUnpacker" onclick="switchTab('unpacker')" class="px-3 sm:px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 text-slate-400 hover:text-slate-200">
+        <i class="fa-solid fa-folder-open"></i><span class="hidden sm:inline">Unpacker</span>
+      </button>
+      <button id="tabBtnTests" onclick="switchTab('tests')" class="px-3 sm:px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 text-slate-400 hover:text-slate-200">
+        <i class="fa-solid fa-vial-circle-check"></i><span class="hidden sm:inline">Tests</span>
+        <span id="navTestBadge" class="px-1.5 py-0.5 text-[10px] rounded-full bg-slate-700 text-slate-300">Run</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none max-w-sm"></div>
+
+  <!-- ===================== PACKER ===================== -->
+  <section id="packerTab" class="space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <div class="lg:col-span-5 space-y-6 flex flex-col">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <h2 class="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+            <i class="fa-solid fa-folder-plus text-brand-500"></i> 1. Pick Project Folder
+          </h2>
+          <div id="folderDropZone" onclick="pickProjectFolder()"
+               class="border-2 border-dashed border-slate-700 hover:border-brand-500/50 transition-colors rounded-xl p-6 text-center bg-slate-950/50 cursor-pointer group">
+            <i class="fa-solid fa-folder-open text-3xl text-slate-500 group-hover:text-brand-500 transition-colors mb-2"></i>
+            <p class="text-xs text-slate-300 font-medium">Click to pick a folder</p>
+            <p id="folderPickerHint" class="text-[11px] text-slate-500 mt-1">Read-write when File System Access API is available</p>
+            <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden" onchange="handleFolderSelect(event)">
+          </div>
+          <div id="folderSummary" class="mt-3 hidden text-xs bg-slate-800/50 border border-slate-700/60 p-3 rounded-lg flex items-center justify-between gap-2 text-slate-300">
+            <span id="folderSummaryText" class="truncate min-w-0"><i class="fa-solid fa-folder text-brand-500 mr-2"></i> —</span>
+            <span class="flex items-center gap-1.5 shrink-0">
+              <span id="folderModeBadge" class="text-[10px] font-semibold px-2 py-0.5 rounded"></span>
+              <span id="folderCountBadge" class="bg-brand-500/20 text-brand-400 font-semibold px-2 py-0.5 rounded text-[11px]">0</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <h2 class="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+            <i class="fa-solid fa-code text-brand-500"></i> 2. Output Format
+          </h2>
+          <div class="grid grid-cols-3 gap-2" id="formatPicker">
+            <button data-fmt="markdown" onclick="setFormat('markdown')"
+              class="fmt-btn px-3 py-3 rounded-xl border text-left transition-all">
+              <div class="text-[11px] font-bold flex items-center gap-1.5"><i class="fa-brands fa-markdown"></i> Markdown</div>
+              <div class="text-[10px] text-slate-400 mt-1 leading-tight">Fenced blocks · AI-friendly</div>
+            </button>
+            <button data-fmt="html" onclick="setFormat('html')"
+              class="fmt-btn px-3 py-3 rounded-xl border text-left transition-all">
+              <div class="text-[11px] font-bold flex items-center gap-1.5"><i class="fa-brands fa-html5"></i> HTML</div>
+              <div class="text-[10px] text-slate-400 mt-1 leading-tight">Byte-exact · verbose</div>
+            </button>
+            <button data-fmt="delimited" onclick="setFormat('delimited')"
+              class="fmt-btn px-3 py-3 rounded-xl border text-left transition-all">
+              <div class="text-[11px] font-bold flex items-center gap-1.5"><i class="fa-solid fa-grip-lines"></i> Plain</div>
+              <div class="text-[10px] text-slate-400 mt-1 leading-tight">=== FILE === markers</div>
+            </button>
+          </div>
+          <p id="formatDesc" class="text-[11px] text-slate-400 mt-3 leading-relaxed"></p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex-1 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-filter text-amber-500"></i> 3. Ignore Rules
+            </h2>
+            <button onclick="resetDefaultIgnore()" class="text-[11px] text-slate-400 hover:text-brand-400 flex items-center gap-1 transition-colors">
+              <i class="fa-solid fa-rotate-left"></i> Reset
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400 mb-3">One glob per line. <code class="text-brand-300">*</code> matches anything, <code class="text-brand-300">?</code> one char.</p>
+          <textarea id="ignoreRulesText" spellcheck="false"
+            class="w-full flex-1 min-h-[150px] p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-300 font-mono focus:outline-none focus:border-brand-500/60 transition-colors resize-none"></textarea>
+          <div class="mt-4 pt-3 border-t border-slate-800/80">
+            <label class="block text-[11px] text-slate-400 mb-1">Output filename</label>
+            <input type="text" id="outputFilenameInput" value="ai_workspace.md"
+              class="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-brand-500">
+          </div>
+        </div>
+
+        <button id="packBtn" onclick="executePacker()"
+          class="w-full py-4 bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white font-semibold rounded-2xl shadow-lg shadow-brand-600/20 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+          <i class="fa-solid fa-box-open"></i> Package Codebase
+        </button>
+      </div>
+
+      <div class="lg:col-span-7 space-y-6 flex flex-col">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex-1 flex flex-col">
+          <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-terminal text-emerald-500"></i> Packing Console
+            </h2>
+            <div class="flex gap-2">
+              <button id="copyPackBtn" onclick="copyPackedResult()" disabled
+                class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 transition-colors flex items-center gap-1.5 disabled:opacity-40">
+                <i class="fa-regular fa-copy"></i> Copy
+              </button>
+              <button id="downloadPackBtn" onclick="downloadPackedResult()" disabled
+                class="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 disabled:opacity-40 shadow-sm">
+                <i class="fa-solid fa-download"></i> Download
+              </button>
+            </div>
+          </div>
+
+          <div id="packerLogArea" class="flex-1 bg-slate-950 border border-slate-800/80 rounded-xl p-4 font-mono text-xs overflow-y-auto max-h-[380px] space-y-1.5 text-slate-400">
+            <div class="text-slate-500 italic">Pick a project folder, choose a format, then click "Package Codebase".</div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+            <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+              <span class="block text-[10px] text-slate-500">Scanned</span>
+              <span id="statTotalScanned" class="font-bold text-slate-200">0</span>
+            </div>
+            <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+              <span class="block text-[10px] text-slate-500">Packed</span>
+              <span id="statPackedCount" class="font-bold text-emerald-400">0</span>
+            </div>
+            <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+              <span class="block text-[10px] text-slate-500">Ignored</span>
+              <span id="statIgnoredCount" class="font-bold text-amber-400">0</span>
+            </div>
+            <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+              <span class="block text-[10px] text-slate-500">~Tokens</span>
+              <span id="statTokens" class="font-bold text-brand-400">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-info text-brand-400"></i> Round-trip guarantees
+          </h3>
+          <ul class="text-xs text-slate-400 leading-relaxed space-y-1.5 list-disc list-inside">
+            <li>All three formats are <strong class="text-slate-300">byte-exact</strong>, including files without a trailing newline and paths containing newlines, quotes, or backslashes.</li>
+            <li><strong class="text-slate-300">Markdown</strong> — fenced blocks with <code class="text-brand-300">path=</code> in the info string; fence length auto-escalates if content contains backticks.</li>
+            <li><strong class="text-slate-300">HTML</strong> — entity-encoded <code class="text-brand-300">&lt;pre&gt;&lt;code&gt;</code> blocks; safest through paste pipelines.</li>
+            <li><strong class="text-slate-300">Plain</strong> — <code class="text-brand-300">=== FILE: path ===</code> markers; delimiter length auto-escalates on collision.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== UNPACKER ===================== -->
+  <section id="unpackerTab" class="space-y-6 hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <div class="lg:col-span-5 space-y-6 flex flex-col">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-file-import text-brand-500"></i> Load AI Response
+          </h2>
+
+          <div class="border-2 border-dashed border-slate-700 hover:border-brand-500/50 transition-colors rounded-xl p-6 text-center bg-slate-950/50 cursor-pointer group"
+               onclick="document.getElementById('responseFileInput').click()">
+            <i class="fa-solid fa-file-code text-3xl text-slate-500 group-hover:text-brand-500 transition-colors mb-2"></i>
+            <p class="text-xs text-slate-300 font-medium">Select a file</p>
+            <p class="text-[11px] text-slate-500 mt-1">Auto-detects Markdown, HTML, or plain delimited</p>
+            <input type="file" id="responseFileInput" accept=".md,.txt,.html,.htm,.markdown" class="hidden" onchange="handleResponseFileSelect(event)">
+          </div>
+
+          <div class="relative flex py-1 items-center">
+            <div class="flex-grow border-t border-slate-800"></div>
+            <span class="flex-shrink mx-3 text-[10px] text-slate-500 uppercase font-semibold">Or paste</span>
+            <div class="flex-grow border-t border-slate-800"></div>
+          </div>
+
+          <textarea id="rawInputText" placeholder="Paste the model's response here..." spellcheck="false"
+            class="w-full h-40 p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-300 font-mono focus:outline-none focus:border-brand-500 resize-none"></textarea>
+
+          <button onclick="executeUnpackFromText()"
+            class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-xl text-xs border border-slate-700 transition-colors flex items-center justify-center gap-2">
+            <i class="fa-solid fa-magnifying-glass text-brand-400"></i> Parse &amp; Extract Files
+          </button>
+
+          <div id="unpackDetected" class="hidden text-[11px] text-slate-400 bg-slate-950 border border-slate-800 rounded-lg p-2.5 leading-relaxed"></div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-7 space-y-6 flex flex-col">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex-1 flex flex-col">
+          <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-cubes text-emerald-400"></i> Extracted Files
+              <span id="unpackedCountBadge" class="hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800"></span>
+            </h2>
+            <div class="flex items-center gap-2">
+              <button id="downloadZipBtn" onclick="downloadAllAsZip()" disabled
+                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-2 disabled:opacity-40">
+                <i class="fa-solid fa-file-zipper"></i> ZIP
+              </button>
+              <button id="applyFolderBtn" onclick="applyFilesToProject()" disabled
+                class="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-2 disabled:opacity-40 shadow-sm"
+                title="Write changes directly to the folder you picked">
+                <i class="fa-solid fa-floppy-disk"></i> Apply to Folder
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-4 flex-1">
+            <div id="unpackedFileList" class="md:col-span-5 bg-slate-950 border border-slate-800 rounded-xl p-2 overflow-y-auto max-h-[440px] space-y-1 text-xs">
+              <div class="text-slate-500 italic p-3 text-center">No files unpacked yet</div>
+            </div>
+
+            <div class="md:col-span-7 flex flex-col bg-slate-950 border border-slate-800 rounded-xl overflow-hidden min-h-[300px]">
+              <div class="bg-slate-900 px-3 py-2 border-b border-slate-800 flex items-center justify-between gap-2">
+                <span id="previewFilePath" class="text-xs font-mono text-slate-300 truncate">Select a file to preview</span>
+                <div class="flex items-center gap-1 shrink-0">
+                  <button id="toggleDiffBtn" onclick="togglePreviewMode()" disabled
+                    class="text-[11px] px-2 py-1 rounded text-slate-400 hover:text-brand-300 hover:bg-slate-800 disabled:opacity-30 transition-colors">
+                    <i class="fa-solid fa-code-compare"></i> Diff
+                  </button>
+                  <button id="downloadSingleFileBtn" onclick="downloadSelectedFile()" disabled
+                    class="text-[11px] px-2 py-1 rounded text-brand-400 hover:text-brand-300 hover:bg-slate-800 disabled:opacity-30 transition-colors">
+                    <i class="fa-solid fa-download"></i> Save
+                  </button>
+                </div>
+              </div>
+              <pre id="previewCodeContent" class="flex-1 p-3 text-xs font-mono text-slate-300 overflow-auto max-h-[400px] whitespace-pre"></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TESTS ===================== -->
+  <section id="testsTab" class="space-y-6 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+        <div>
+          <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2">
+            <i class="fa-solid fa-microscope text-brand-500"></i> Property Testing Suite
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">
+            Randomized invariants including byte-exact round-trip for every format,
+            no-eol preservation, fence/delimiter escalation, monotonicity, and determinism.
+          </p>
+        </div>
+        <button onclick="runAllPropertyTests()"
+          class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-2 shadow-md">
+          <i class="fa-solid fa-play"></i> Re-Run
+        </button>
+      </div>
+
+      <div id="testOverallBanner" class="p-4 rounded-xl border flex items-center justify-between bg-slate-950 border-slate-800">
+        <div class="flex items-center gap-3">
+          <div id="testStatusIcon" class="w-9 h-9 rounded-full flex items-center justify-center bg-slate-800 text-slate-400">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+          </div>
+          <div>
+            <h3 id="testStatusTitle" class="text-sm font-bold text-slate-200">Initializing…</h3>
+            <p id="testStatusDesc" class="text-xs text-slate-400">Tests run automatically on startup</p>
+          </div>
+        </div>
+        <span id="testScoreBadge" class="text-xs font-bold px-3 py-1 rounded-lg bg-slate-800 text-slate-300">0 / 9</span>
+      </div>
+
+      <div id="testResultsList" class="space-y-3"></div>
+    </div>
+  </section>
+</main>
+
+
+
+  <script src="js/state.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/formats.js"></script>
+  <script src="js/packer.js"></script>
+  <script src="js/unpacker.js"></script>
+  <script src="js/tests.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

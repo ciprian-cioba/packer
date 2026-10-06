@@ -60,3 +60,4 @@ Cargo.lock
 poetry.lock
 Gemfile.lock
 composer.lock
+.aiignore
